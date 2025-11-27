@@ -1,0 +1,14 @@
+# SNN-YOLOv8 Dependencies
+# Install with: pip install -r requirements.txt
+
+# SNN-YOLOv8 Dependencies
+torch>=2.0.0
+torchvision>=0.15.0
+ultralytics>=8.0.0
+opencv-python>=4.8.0
+Pillow>=10.0.0
+numpy==1.26.4
+matplotlib>=3.7.0
+pandas>=2.0.0,<2.3.0
+tqdm>=4.65.0
+nvidia-ml-py3
