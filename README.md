@@ -343,7 +343,7 @@ This project is licensed under the MIT License - see LICENSE file for details.
 
 ## 📧 Contact
 
-**Sambhav Patel**
+**Sambhav**
 - GitHub: [@Sambhav6626](https://github.com/Sambhav6626)
 - Project: [Neuro_AI](https://github.com/Sambhav6626/Neuro_AI)
 
