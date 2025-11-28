@@ -1,9 +1,6 @@
 """
-========================================================================
-COMPLETE END-TO-END SNN-YOLOV8 PIPELINE - LOCAL VERSION
+SNN-YOLOV8 PIPELINE - LOCAL VERSION
 VOC2007 Dataset → Training → Evaluation → Comparison
-========================================================================
-Run this on your local machine with VOC2007 dataset!
 """
 
 import torch
@@ -30,7 +27,6 @@ import threading
 warnings.filterwarnings('ignore')
 
 class GPUEnergyMonitor:
-    """Monitor actual GPU power consumption with pynvml (fast) or nvidia-smi fallback"""
     
     def __init__(self, sample_interval=0.1):
         self.sample_interval = sample_interval
@@ -39,7 +35,6 @@ class GPUEnergyMonitor:
         self.monitor_thread = None
         self.start_time = None
         
-        # Try to initialize pynvml (1000x faster than nvidia-smi)
         self.use_nvml = False
         self.gpu_handle = None
         self.pynvml = None
@@ -50,26 +45,22 @@ class GPUEnergyMonitor:
             self.gpu_handle = pynvml.nvmlDeviceGetHandleByIndex(0)
             self.use_nvml = True
             self.pynvml = pynvml
-            print("✓ Using pynvml for fast power monitoring")
+            print("Using pynvml for fast power monitoring")
         except ImportError:
-            print("⚠️  pynvml not installed - using nvidia-smi (slower)")
+            print("pynvml not installed - using nvidia-smi")
         except Exception as e:
-            print(f"⚠️  pynvml initialization failed: {e}")
-            print("   Falling back to nvidia-smi")
+            print(f"pynvml initialization failed: {e}")
+            print("Falling back to nvidia-smi")
     
     def get_gpu_power(self):
-        """Get current GPU power in Watts"""
         
-        # Try pynvml first (1000x faster than nvidia-smi)
         if self.use_nvml and self.gpu_handle and self.pynvml:
             try:
                 power_mw = self.pynvml.nvmlDeviceGetPowerUsage(self.gpu_handle)
-                return power_mw / 1000.0  # Convert milliwatts to watts
+                return power_mw / 1000.0
             except Exception:
-                # If pynvml fails, disable it and fall back
                 self.use_nvml = False
         
-        # Fallback to nvidia-smi (slow but works)
         try:
             result = subprocess.check_output(
                 ['nvidia-smi', '--query-gpu=power.draw', '--format=csv,noheader,nounits'],
@@ -83,7 +74,6 @@ class GPUEnergyMonitor:
             return None
     
     def _monitor_loop(self):
-        """Background monitoring loop"""
         while self.monitoring:
             power = self.get_gpu_power()
             if power:
@@ -94,26 +84,23 @@ class GPUEnergyMonitor:
             time.sleep(self.sample_interval)
     
     def start(self):
-        """Start monitoring"""
         self.power_readings = []
         self.monitoring = True
         self.start_time = time.time()
         self.monitor_thread = threading.Thread(target=self._monitor_loop, daemon=True)
         self.monitor_thread.start()
-        print("⚡ Energy monitoring started...")
+        print("Energy monitoring started...")
     
     def stop(self):
-        """Stop monitoring and return stats - NEVER RETURNS NONE"""
         self.monitoring = False
         if self.monitor_thread:
             self.monitor_thread.join(timeout=2)
         
         duration = time.time() - self.start_time
         
-        # ✅ ALWAYS return valid stats (never None)
         if not self.power_readings:
-            print(f"⚠️  Collected 0 power readings in {duration:.1f}s - using estimates")
-            avg_power = 250.0  # Tesla V100 training estimate
+            print(f"Collected 0 power readings in {duration:.1f}s - using estimates")
+            avg_power = 250.0
             
             stats = {
                 'avg_power_w': avg_power,
@@ -128,10 +115,9 @@ class GPUEnergyMonitor:
                 'method': 'estimated'
             }
             
-            print(f"⚡ Estimated energy: {stats['energy_wh']:.4f}Wh")
+            print(f"Estimated energy: {stats['energy_wh']:.4f}Wh")
             return stats
         
-        # Calculate from actual readings
         powers = [r['power'] for r in self.power_readings]
         avg_power = np.mean(powers)
         energy_j = avg_power * duration
@@ -150,19 +136,16 @@ class GPUEnergyMonitor:
             'method': 'measured'
         }
         
-        print(f"⚡ Monitoring stopped: {stats['avg_power_w']:.2f}W avg, {stats['energy_wh']:.4f}Wh total")
-        print(f"   Collected {len(powers)} samples over {duration:.1f}s")
+        print(f"Monitoring stopped: {stats['avg_power_w']:.2f}W avg, {stats['energy_wh']:.4f}Wh total")
+        print(f"Collected {len(powers)} samples over {duration:.1f}s")
         
         return stats
-# ============================================================================
-# CONFIGURATION
-# ============================================================================
 
 class Config:
     DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
-    IMGSZ = 416  # 🔥 REDUCED from 640 (saves 58% memory)
-    TIMESTEPS = 2  # 🔥 REDUCED from 4 (saves 50% memory)
-    GRADIENT_ACCUMULATION_STEPS = 8  # 🔥 NEW: Simulate batch_size=32
+    IMGSZ = 416
+    TIMESTEPS = 2
+    GRADIENT_ACCUMULATION_STEPS = 8
     DEFAULT_THRESHOLD = 3.0
     DEFAULT_TAU = 0.5
     SURROGATE_SLOPE = 25.0
@@ -178,49 +161,38 @@ class Config:
 CONFIG = Config()
 
 print("="*80)
-print("🚀 COMPLETE SNN-YOLOV8 PIPELINE - LOCAL VERSION")
+print("SNN-YOLOV8 PIPELINE - LOCAL VERSION")
 print("="*80)
 print(f"Device: {CONFIG.DEVICE}")
 if CONFIG.DEVICE == 'cuda':
     print(f"GPU: {torch.cuda.get_device_name(0)}")
     print(f"CUDA Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.2f} GB")
 else:
-    print("⚠️  WARNING: Running on CPU - Training will be slower")
+    print("WARNING: Running on CPU - Training will be slower")
 print(f"PyTorch: {torch.__version__}")
 print("="*80)
 
-# ============================================================================
-# INSTALL ULTRALYTICS
-# ============================================================================
-
 def setup_ultralytics():
-    """Install ultralytics if needed"""
     try:
         from ultralytics import YOLO
-        print("✓ Ultralytics already installed")
+        print("Ultralytics already installed")
         return True
     except ImportError:
-        print("📦 Installing ultralytics...")
+        print("Installing ultralytics...")
         subprocess.check_call(['pip', 'install', '-q', 'ultralytics'])
-        print("✓ Ultralytics installed")
+        print("Ultralytics installed")
         return True
 
 setup_ultralytics()
 from ultralytics import YOLO
 
-# ============================================================================
-# LOCAL VOC2007 SETUP
-# ============================================================================
-
 def setup_voc2007_local(voc_path):
-    """Setup VOC2007 dataset from local path"""
     print("\n" + "="*80)
     print("SETTING UP VOC2007 FROM LOCAL PATH")
     print("="*80)
     
     voc_path = Path(voc_path)
     
-    # Handle both VOCdevkit and VOC2007 paths
     if voc_path.name == 'VOC2007':
         voc2007_path = voc_path
         voc_root = voc_path.parent
@@ -229,32 +201,24 @@ def setup_voc2007_local(voc_path):
         voc2007_path = voc_path / 'VOC2007'
     
     if not voc2007_path.exists():
-        print(f"❌ Error: VOC2007 not found at {voc2007_path}")
+        print(f"Error: VOC2007 not found at {voc2007_path}")
         return False, None
     
     required = ['Annotations', 'ImageSets', 'JPEGImages']
     for folder in required:
         if not (voc2007_path / folder).exists():
-            print(f"❌ Missing folder: {folder}")
+            print(f"Missing folder: {folder}")
             return False, None
     
     n_imgs = len(list((voc2007_path / 'JPEGImages').glob('*.jpg')))
-    print(f"✓ VOC2007 ready with {n_imgs} images")
-    print(f"✓ Location: {voc2007_path}")
+    print(f"VOC2007 ready with {n_imgs} images")
+    print(f"Location: {voc2007_path}")
     print("="*80)
     
     return True, str(voc_root)
 
-# ============================================================================
-# PART 1: OPTIMIZED DATASET CONVERSION
-# ============================================================================
-
 def convert_voc_to_yolo_optimized(voc_root, output_dir="./yolo_voc2007", 
                                    use_symlink=False, num_workers=4, skip_copy=False):
-    """
-    OPTIMIZED VOC2007 to YOLO conversion (~1 minute instead of 4 hours)
-    NOTE: use_symlink=False by default for Windows compatibility
-    """
     
     print("\n" + "="*80)
     print("STEP 1: CONVERTING VOC2007 TO YOLO FORMAT")
@@ -269,21 +233,18 @@ def convert_voc_to_yolo_optimized(voc_root, output_dir="./yolo_voc2007",
     IMG_OUT = OUT_DIR / "images"
     LBL_OUT = OUT_DIR / "labels"
     
-    # Verify input
     if not IMG_DIR.exists() or not ANN_DIR.exists():
-        print(f"❌ Error: VOC2007 not found at {VOC_ROOT}")
+        print(f"Error: VOC2007 not found at {VOC_ROOT}")
         return None
     
     n_imgs = len(list(IMG_DIR.glob('*.jpg')))
     n_xmls = len(list(ANN_DIR.glob('*.xml')))
-    print(f"✓ Found {n_imgs} images and {n_xmls} annotations")
+    print(f"Found {n_imgs} images and {n_xmls} annotations")
     
-    # Create directories
     for split in ['train', 'val', 'test']:
         (IMG_OUT / split).mkdir(parents=True, exist_ok=True)
         (LBL_OUT / split).mkdir(parents=True, exist_ok=True)
     
-    # Get image IDs
     trainval_txt = VOC_ROOT / "ImageSets" / "Main" / "trainval.txt"
     test_txt = VOC_ROOT / "ImageSets" / "Main" / "test.txt"
     
@@ -352,7 +313,7 @@ def convert_voc_to_yolo_optimized(voc_root, output_dir="./yolo_voc2007",
                 
                 img_out_path = IMG_OUT / split / f"{image_id}.jpg"
                 if not skip_copy:
-                    if use_symlink and os.name != 'nt':  # Don't use symlinks on Windows
+                    if use_symlink and os.name != 'nt':
                         if not img_out_path.exists():
                             os.symlink(str(img_path.absolute()), str(img_out_path))
                     else:
@@ -364,8 +325,7 @@ def convert_voc_to_yolo_optimized(voc_root, output_dir="./yolo_voc2007",
         except:
             return False, image_id, split
     
-    # Parallel conversion
-    print("🔄 Converting annotations...")
+    print("Converting annotations...")
     
     all_tasks = []
     for split, image_ids in splits.items():
@@ -388,7 +348,7 @@ def convert_voc_to_yolo_optimized(voc_root, output_dir="./yolo_voc2007",
                 pbar.update(1)
     
     elapsed = time.time() - start_time
-    print(f"\n✓ Conversion complete! ({elapsed:.1f}s)")
+    print(f"\nConversion complete! ({elapsed:.1f}s)")
     print(f"  Train: {success_count['train']} images")
     print(f"  Val:   {success_count['val']} images")
     print(f"  Test:  {success_count['test']} images")
@@ -396,12 +356,7 @@ def convert_voc_to_yolo_optimized(voc_root, output_dir="./yolo_voc2007",
     
     return str(OUT_DIR)
 
-# ============================================================================
-# PART 2: DATASET LOADER
-# ============================================================================
-
 class VOCDetectionDataset(Dataset):
-    """Load YOLO format VOC2007 dataset"""
     
     def __init__(self, img_dir, lbl_dir, imgsz=640):
         self.img_dir = Path(img_dir)
@@ -416,13 +371,11 @@ class VOCDetectionDataset(Dataset):
         img_path = self.img_files[idx]
         lbl_path = self.lbl_dir / (img_path.stem + '.txt')
         
-        # Load and resize image
         img = cv2.imread(str(img_path))
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         img = cv2.resize(img, (self.imgsz, self.imgsz))
         img_tensor = torch.from_numpy(img).float().permute(2, 0, 1) / 255.0
         
-        # Load labels
         boxes = []
         if lbl_path.exists():
             with open(lbl_path) as f:
@@ -440,40 +393,12 @@ class VOCDetectionDataset(Dataset):
         target = torch.tensor(boxes, dtype=torch.float32)
         return img_tensor, target
 
-
-# ============================================================================
-# CROSS-PLATFORM FIX FOR DATALOADER
-# Works on Windows, Linux, and macOS
-# ============================================================================
-
-# STEP 1: Add this module-level collate function BEFORE create_dataloaders()
-# (Around line 285, after the VOCDetectionDataset class)
-
 def voc_collate_fn(batch):
-    """
-    Collate function for VOC dataset.
-    MUST be at module level (not inside another function) for cross-platform compatibility.
-    """
     images = torch.stack([item[0] for item in batch])
     targets = [item[1] for item in batch]
     return images, targets
 
-
-# STEP 2: Replace the entire create_dataloaders function with this:
-
 def create_dataloaders(yolo_dir, batch_size=16, imgsz=640, num_workers=None):
-    """
-    Create train and val dataloaders
-    
-    Args:
-        yolo_dir: Path to YOLO format dataset
-        batch_size: Batch size for training
-        imgsz: Image size
-        num_workers: Number of worker processes for data loading.
-                     None = auto-detect based on OS:
-                       - Windows: 0 (due to multiprocessing limitations)
-                       - Linux/macOS: min(4, cpu_count)
-    """
     
     print("\n" + "="*80)
     print("STEP 2: CREATING DATALOADERS")
@@ -492,25 +417,20 @@ def create_dataloaders(yolo_dir, batch_size=16, imgsz=640, num_workers=None):
         imgsz
     )
     
-    print(f"✓ Train dataset: {len(train_dataset)} images")
-    print(f"✓ Val dataset: {len(val_dataset)} images")
+    print(f"Train dataset: {len(train_dataset)} images")
+    print(f"Val dataset: {len(val_dataset)} images")
     
-    # =========================================================================
-    # AUTO-DETECT OPTIMAL num_workers BASED ON OS
-    # =========================================================================
     if num_workers is None:
-        if os.name == 'nt':  # Windows
+        if os.name == 'nt':
             num_workers = 0
-            print(f"✓ Windows detected: Using num_workers=0")
-        else:  # Linux/macOS
+            print(f"Windows detected: Using num_workers=0")
+        else:
             num_workers = min(4, os.cpu_count() or 1)
-            print(f"✓ Linux/macOS detected: Using num_workers={num_workers}")
+            print(f"Linux/macOS detected: Using num_workers={num_workers}")
     elif os.name == 'nt' and num_workers > 0:
-        # Safety override for Windows
-        print(f"⚠️  Windows: Overriding num_workers={num_workers} → 0")
+        print(f"Windows: Overriding num_workers={num_workers} to 0")
         num_workers = 0
     
-    # Disable pin_memory for CPU
     use_pin_memory = torch.cuda.is_available()
     
     train_loader = DataLoader(
@@ -518,7 +438,7 @@ def create_dataloaders(yolo_dir, batch_size=16, imgsz=640, num_workers=None):
         batch_size=batch_size,
         shuffle=True,
         num_workers=num_workers,
-        collate_fn=voc_collate_fn,  # Module-level function
+        collate_fn=voc_collate_fn,
         pin_memory=use_pin_memory
     )
     
@@ -527,27 +447,24 @@ def create_dataloaders(yolo_dir, batch_size=16, imgsz=640, num_workers=None):
         batch_size=batch_size,
         shuffle=False,
         num_workers=num_workers,
-        collate_fn=voc_collate_fn,  # Module-level function
+        collate_fn=voc_collate_fn,
         pin_memory=use_pin_memory
     )
     
-    print(f"✓ Train batches: {len(train_loader)}")
-    print(f"✓ Val batches: {len(val_loader)}")
-    print(f"✓ Num workers: {num_workers}")
-    print(f"✓ Pin memory: {use_pin_memory}")
+    print(f"Train batches: {len(train_loader)}")
+    print(f"Val batches: {len(val_loader)}")
+    print(f"Num workers: {num_workers}")
+    print(f"Pin memory: {use_pin_memory}")
     print("="*80)
     
     return train_loader, val_loader
+
 def train_yolov8_from_scratch(yolo_dir, epochs=50, batch_size=16, imgsz=640, device='cuda'):
-    """
-    Train YOLOv8n from scratch on VOC2007 with REAL energy monitoring
-    """
     
     print("\n" + "="*80)
-    print("STEP 3: TRAINING YOLOV8 FROM SCRATCH (WITH REAL ENERGY MONITORING)")
+    print("STEP 3: TRAINING YOLOV8 FROM SCRATCH")
     print("="*80)
     
-    # Create YAML config for VOC2007
     data_yaml = Path(yolo_dir) / 'voc2007.yaml'
     with open(data_yaml, 'w') as f:
         f.write(f"""path: {yolo_dir}
@@ -559,24 +476,21 @@ nc: 20
 names: {CONFIG.VOC_CLASSES}
 """)
     
-    print(f"✓ Created dataset config: {data_yaml}")
+    print(f"Created dataset config: {data_yaml}")
     
-    # Initialize YOLOv8 from scratch (no pretrained weights)
     from ultralytics import YOLO
-    model = YOLO('yolov8n.yaml')  # Architecture only, NO pretrained weights!
+    model = YOLO('yolov8n.yaml')
     
-    print(f"✓ YOLOv8n initialized from scratch (no pretrained weights)")
+    print(f"YOLOv8n initialized from scratch")
     print(f"   Device: {device.upper()}")
     print(f"   Epochs: {epochs}")
     print(f"   Batch size: {batch_size}")
     print(f"   Image size: {imgsz}")
     
-    # Start energy monitoring
     monitor = GPUEnergyMonitor(sample_interval=0.1)
     monitor.start()
     
-    # Train model
-    print("\n🔥 Starting YOLOv8 training from scratch...")
+    print("\nStarting YOLOv8 training from scratch...")
     start_time = time.time()
     
     results = model.train(
@@ -585,7 +499,7 @@ names: {CONFIG.VOC_CLASSES}
         batch=batch_size,
         imgsz=imgsz,
         device=device,
-        pretrained=False,  # Important: Train from scratch!
+        pretrained=False,
         verbose=True,
         project='yolov8_training',
         name='from_scratch',
@@ -594,39 +508,17 @@ names: {CONFIG.VOC_CLASSES}
     
     train_time = time.time() - start_time
     
-    # Stop energy monitoring
-# Stop energy monitoring
     energy_stats = monitor.stop()
 
-    print(f"\n✅ YOLOv8 Training Complete!")
+    print(f"\nYOLOv8 Training Complete!")
     print(f"   Training time: {train_time/3600:.2f} hours")
     if energy_stats:
         print(f"   Training energy: {energy_stats['energy_wh']:.4f} Wh ({energy_stats['energy_kwh']:.6f} kWh)")
     else:
-        print(f"   ⚠️ Energy monitoring failed - manual calculation needed")
+        print(f"   Energy monitoring failed - manual calculation needed")
         energy_stats = {'energy_wh': 0, 'energy_kwh': 0, 'avg_power_w': 0, 'duration_h': train_time/3600}
     
     return model, energy_stats, results
-
-# ============================================================================
-# SUMMARY OF CHANGES
-# ============================================================================
-#
-# | Platform     | num_workers | Why                                    |
-# |--------------|-------------|----------------------------------------|
-# | Windows      | 0           | Can't pickle local functions, spawn()  |
-# | Linux/macOS  | 4 (or less) | Uses fork(), parallel data loading OK  |
-#
-# The collate_fn MUST be at module level (not inside a function) because:
-# - Windows uses "spawn" which requires all objects to be picklable
-# - Local functions cannot be pickled
-# - Module-level functions work on ALL platforms
-#
-# ============================================================================
-
-# ============================================================================
-# PART 3: SNN COMPONENTS
-# ============================================================================
 
 class SurrogateSpike(torch.autograd.Function):
     scale = CONFIG.SURROGATE_SLOPE
@@ -836,7 +728,6 @@ class SpikingDetect(nn.Module):
             cls = self.cv3[i](x[i])
             outputs.append(torch.cat([box, cls], 1))
         return outputs
-
 class SNNYOLOv8(nn.Module):
     def __init__(self, nc=20, threshold=None, tau=None):
         super().__init__()
@@ -882,13 +773,11 @@ class SNNYOLOv8(nn.Module):
     def _initialize_weights(self):
             for m in self.modules():
                 if isinstance(m, nn.Conv2d):
-                    # He initialization
                     nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
                     if m.bias is not None:
                         nn.init.zeros_(m.bias)
                 elif isinstance(m, nn.BatchNorm2d):
-                    # Start with lower BN weights for better spike control
-                    nn.init.constant_(m.weight, 0.5)  # Changed from 1.0
+                    nn.init.constant_(m.weight, 0.5)  
                     nn.init.zeros_(m.bias)
                 elif isinstance(m, nn.Linear):
                     nn.init.normal_(m.weight, 0, 0.01)
@@ -957,9 +846,6 @@ class SNNYOLOv8(nn.Module):
             return 0.0
         return sum(rates.values()) / len(rates)
 
-# ============================================================================
-# PART 4: TRAINING
-# ============================================================================
 
 class YOLOv8Loss(nn.Module):
     """
@@ -972,8 +858,6 @@ class YOLOv8Loss(nn.Module):
         self.num_classes = num_classes
         self.bce = nn.BCEWithLogitsLoss(reduction='none')
         self.reg_max = 16
-        
-        # Loss weights (from YOLOv8)
         self.box_weight = 7.5
         self.cls_weight = 0.5
         self.dfl_weight = 1.5
@@ -981,7 +865,7 @@ class YOLOv8Loss(nn.Module):
     def bbox_iou(self, box1, box2, xywh=True, eps=1e-7):
         """Calculate IoU between boxes"""
         if xywh:
-            # Convert from center format to corner format
+       
             b1_x1, b1_y1 = box1[:, 0] - box1[:, 2] / 2, box1[:, 1] - box1[:, 3] / 2
             b1_x2, b1_y2 = box1[:, 0] + box1[:, 2] / 2, box1[:, 1] + box1[:, 3] / 2
             b2_x1, b2_y1 = box2[:, 0] - box2[:, 2] / 2, box2[:, 1] - box2[:, 3] / 2
@@ -990,18 +874,16 @@ class YOLOv8Loss(nn.Module):
             b1_x1, b1_y1, b1_x2, b1_y2 = box1[:, 0], box1[:, 1], box1[:, 2], box1[:, 3]
             b2_x1, b2_y1, b2_x2, b2_y2 = box2[:, 0], box2[:, 1], box2[:, 2], box2[:, 3]
         
-        # Intersection area
         inter = (torch.min(b1_x2, b2_x2) - torch.max(b1_x1, b2_x1)).clamp(0) * \
                 (torch.min(b1_y2, b2_y2) - torch.max(b1_y1, b2_y1)).clamp(0)
         
-        # Union area
+
         w1, h1 = b1_x2 - b1_x1, b1_y2 - b1_y1 + eps
         w2, h2 = b2_x2 - b2_x1, b2_y2 - b2_y1 + eps
         union = w1 * h1 + w2 * h2 - inter + eps
         
         iou = inter / union
-        
-        # CIoU (Complete IoU)
+
         cw = torch.max(b1_x2, b2_x2) - torch.min(b1_x1, b2_x1)
         ch = torch.max(b1_y2, b2_y2) - torch.min(b1_y1, b2_y1)
         c2 = cw ** 2 + ch ** 2 + eps
@@ -1031,42 +913,41 @@ class YOLOv8Loss(nn.Module):
         batch_size = predictions[0].shape[0]
         
         for batch_idx in range(batch_size):
-            # Get targets for this image
+
             if batch_idx >= len(targets):
                 continue
             
             target = targets[batch_idx]
             if len(target) == 0:
-                # No objects in image - penalize confident predictions
+              
                 for pred in predictions:
                     pred_cls = pred[batch_idx, 4*self.reg_max:, :, :]
                     loss_cls += pred_cls.sigmoid().mean() * 0.1
                 continue
-            
-            # Process each detection scale
+       
             for scale_idx, pred in enumerate(predictions):
-                pred_single = pred[batch_idx]  # [4*reg_max + num_classes, H, W]
+                pred_single = pred[batch_idx]  
                 h, w = pred_single.shape[1:]
                 stride = strides[scale_idx]
                 
-                # Split into box and class predictions
-                pred_box = pred_single[:4*self.reg_max, :, :]  # [64, H, W]
-                pred_cls = pred_single[4*self.reg_max:, :, :]  # [num_classes, H, W]
+         
+                pred_box = pred_single[:4*self.reg_max, :, :]  
+                pred_cls = pred_single[4*self.reg_max:, :, :]  
                 
-                # Create grid
+        
                 grid_y, grid_x = torch.meshgrid(
                     torch.arange(h, device=device),
                     torch.arange(w, device=device),
                     indexing='ij'
                 )
-                grid = torch.stack([grid_x, grid_y], dim=0).float()  # [2, H, W]
+                grid = torch.stack([grid_x, grid_y], dim=0).float()  
                 
-                # Reshape predictions to [H*W, ...]
-                pred_box_flat = pred_box.permute(1, 2, 0).reshape(-1, 4*self.reg_max)  # [H*W, 64]
-                pred_cls_flat = pred_cls.permute(1, 2, 0).reshape(-1, self.num_classes)  # [H*W, 20]
+         
+                pred_box_flat = pred_box.permute(1, 2, 0).reshape(-1, 4*self.reg_max)  
+                pred_cls_flat = pred_cls.permute(1, 2, 0).reshape(-1, self.num_classes) 
                 grid_flat = grid.permute(1, 2, 0).reshape(-1, 2)  # [H*W, 2]
                 
-                # Match targets to grid cells (simplified matching)
+             
                 target_boxes = target[:, :4]  # [N, 4] in pixel coordinates
                 target_classes = target[:, 4].long()  # [N]
                 
@@ -1119,7 +1000,7 @@ def train_snn_model(model, train_loader, val_loader, epochs=20, lr=0.001,
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
     
     print(f"Training on: {device.upper()}")
-    print(f"⚡ Memory Optimizations Enabled:")
+    print(f" Memory Optimizations Enabled:")
     print(f"   • Mixed Precision (AMP): {'YES' if device == 'cuda' else 'NO'}")
     print(f"   • Gradient Accumulation Steps: {CONFIG.GRADIENT_ACCUMULATION_STEPS}")
     print(f"   • Image Size: {CONFIG.IMGSZ}")
@@ -1128,12 +1009,12 @@ def train_snn_model(model, train_loader, val_loader, epochs=20, lr=0.001,
     model.to(device)
     model.train()
     
-    # 🔥 Enable memory optimizations
+
     if device == 'cuda':
         torch.cuda.empty_cache()
         torch.backends.cudnn.benchmark = True
     
-    # Better optimizer
+
     optimizer = torch.optim.AdamW(
         model.parameters(),
         lr=lr,
@@ -1141,7 +1022,7 @@ def train_snn_model(model, train_loader, val_loader, epochs=20, lr=0.001,
         weight_decay=0.01
     )
     
-    # Learning rate schedule with warmup
+ 
     warmup_epochs = min(3, epochs // 4)
     
     def lr_lambda(epoch):
@@ -1155,7 +1036,7 @@ def train_snn_model(model, train_loader, val_loader, epochs=20, lr=0.001,
     # Use proper YOLO loss
     criterion = YOLOv8Loss(num_classes=len(CONFIG.VOC_CLASSES))
     
-    # 🔥 AMP scaler for mixed precision
+    #  AMP scaler for mixed precision
     from torch.cuda.amp import autocast, GradScaler
     scaler = GradScaler() if device == 'cuda' else None
     use_amp = device == 'cuda'
@@ -1190,7 +1071,7 @@ def train_snn_model(model, train_loader, val_loader, epochs=20, lr=0.001,
             
             model.reset_states()
             
-            # 🔥 Mixed precision forward pass
+           
             with autocast(enabled=use_amp):
                 outputs = model(images, timesteps=timesteps)
                 loss, box_loss, cls_loss, _ = criterion(outputs, targets)
@@ -1205,7 +1086,7 @@ def train_snn_model(model, train_loader, val_loader, epochs=20, lr=0.001,
                 else:
                     loss.backward()
                 
-                # 🔥 Only update weights every N steps
+               
                 if (batch_idx + 1) % accumulation_steps == 0:
                     if scaler:
                         scaler.unscale_(optimizer)
@@ -1228,7 +1109,7 @@ def train_snn_model(model, train_loader, val_loader, epochs=20, lr=0.001,
             epoch_fr += fr
             num_batches += 1
             
-            # 🔥 Aggressive cache clearing
+    
             if device == 'cuda' and batch_idx % 5 == 0:
                 torch.cuda.empty_cache()
         
@@ -1245,10 +1126,10 @@ def train_snn_model(model, train_loader, val_loader, epochs=20, lr=0.001,
         
         current_lr = optimizer.param_groups[0]['lr']
         
-        print(f"✓ Epoch {epoch+1} | Loss: {avg_loss:.4f} | Box: {avg_box:.4f} | "
+        print(f" Epoch {epoch+1} | Loss: {avg_loss:.4f} | Box: {avg_box:.4f} | "
               f"Cls: {avg_cls:.4f} | FR: {avg_fr:.4f} | LR: {current_lr:.6f}")
         
-        # 🔥 Memory status
+      
         if device == 'cuda':
             allocated = torch.cuda.memory_allocated() / 1e9
             reserved = torch.cuda.memory_reserved() / 1e9
@@ -1259,7 +1140,7 @@ def train_snn_model(model, train_loader, val_loader, epochs=20, lr=0.001,
     train_time = time.time() - start_time
     energy_stats = monitor.stop()
     
-    print(f"\n✅ SNN Training Complete!")
+    print(f"\n SNN Training Complete!")
     print(f"   Training time: {train_time/3600:.2f} hours")
     if energy_stats:
         print(f"   Training energy: {energy_stats['energy_wh']:.4f} Wh")
@@ -1267,14 +1148,9 @@ def train_snn_model(model, train_loader, val_loader, epochs=20, lr=0.001,
     print(f"   Final Firing Rate: {firing_rates[-1]:.4f}")
     print("="*80)
     
-    return model, train_losses, firing_rates, energy_stats  # 👈 CHANGED: Return firing_rates too
+    return model, train_losses, firing_rates, energy_stats  
 
-# ============================================================================
-# PART 5: EVALUATION
-# ============================================================================
-# ============================================================================
-# TRAINING VISUALIZATION FUNCTIONS
-# ============================================================================
+
 
 def plot_snn_training_metrics(train_losses, firing_rates, epochs, save_path='./results'):
     """
@@ -1354,14 +1230,14 @@ def plot_yolov8_training_metrics(results, save_path='./results'):
             elif hasattr(results, 'results'):
                 results_df = results.results
             else:
-                print("⚠️  YOLOv8 training results not available for plotting")
+                print("  YOLOv8 training results not available for plotting")
                 print(f"   Results type: {type(results)}")
                 print(f"   Available attributes: {dir(results)}")
                 return
         
         # Ensure we have a DataFrame
         if not isinstance(results_df, pd.DataFrame):
-            print("⚠️  Could not extract DataFrame from YOLOv8 results")
+            print("  Could not extract DataFrame from YOLOv8 results")
             return
         
         # Check available columns
@@ -1468,7 +1344,7 @@ def plot_yolov8_training_metrics(results, save_path='./results'):
         plt.close()
         
     except Exception as e:
-        print(f"⚠️  Could not plot YOLOv8 training metrics: {e}")
+        print(f"  Could not plot YOLOv8 training metrics: {e}")
         import traceback
         print(traceback.format_exc())
 
@@ -1545,9 +1421,6 @@ def plot_combined_training_comparison(snn_losses, snn_firing_rates, snn_epochs,
 
 
 
-# ============================================================================
-# REPLACE: evaluate_snn (Add real energy measurement)
-# ============================================================================
 def decode_snn_outputs(outputs, conf_threshold=0.25, imgsz=640, num_classes=20, max_detections_per_scale=100):
     """
     Decode SNN spike outputs into bounding boxes (OPTIMIZED - prevents hanging)
@@ -1589,7 +1462,7 @@ def decode_snn_outputs(outputs, conf_threshold=0.25, imgsz=640, num_classes=20, 
             
             num_candidates = mask.sum().item()
             
-            # ✅ CRITICAL FIX: Limit processing to prevent hanging
+   
             if num_candidates == 0:
                 continue
             
@@ -1669,7 +1542,7 @@ def evaluate_snn(model, val_loader, timesteps=4, device=None, max_batches=None):
     num_samples = 0
     num_batches = 0
     
-    # ✅ Move signal import and handler OUTSIDE the loop
+
     import signal
     
     def timeout_handler(signum, frame):
@@ -1697,12 +1570,12 @@ def evaluate_snn(model, val_loader, timesteps=4, device=None, max_batches=None):
             num_batches += 1
             
             # Debug: Check output statistics
-            print(f"\n  🔍 Batch {batch_idx+1}/{len(val_loader)} - Output stats:")
+            print(f"\n  Batch {batch_idx+1}/{len(val_loader)} - Output stats:")
             for scale_idx, out in enumerate(outputs):
                 print(f"    Scale {scale_idx}: shape={out.shape}, mean={out.mean().item():.4f}, "
                       f"max={out.max().item():.4f}, min={out.min().item():.4f}")
             
-            # Add timeout protection
+      
             signal.signal(signal.SIGALRM, timeout_handler)
             signal.alarm(30)  # 30 second timeout per batch
             
@@ -1768,13 +1641,7 @@ def evaluate_snn(model, val_loader, timesteps=4, device=None, max_batches=None):
     print("="*80)
     
     return metrics, all_predictions, all_targets
-# ============================================================================
-# PART 6: COMPARISON
-# ============================================================================
-# ============================================================================
-# ACCURACY COMPUTATION FUNCTIONS
-# Add these functions BEFORE the compare_models() function
-# ============================================================================
+
 
 def compute_iou(box1, box2):
     """
@@ -1960,10 +1827,6 @@ def compute_classification_accuracy(all_predictions, all_targets, num_classes=20
     }
 
 
-# ============================================================================
-# UPDATED EVALUATION FUNCTIONS
-# These updates add mAP and classification accuracy to the metrics
-# ============================================================================
 
 def evaluate_real_yolov8(model, val_loader, device=None, max_batches=None):
     """Evaluate real YOLOv8 model with accuracy metrics and REAL energy"""
@@ -2054,10 +1917,6 @@ def evaluate_real_yolov8(model, val_loader, device=None, max_batches=None):
     
     return metrics, all_predictions, all_targets
 
-# ============================================================================
-# ENHANCED COMPARISON FUNCTION
-# Replace your existing compare_models() function with this one
-# ============================================================================
 
 def compare_models(ann_metrics, snn_metrics, ann_train_energy=None, snn_train_energy=None, save_path='./results'):
     """
@@ -2081,10 +1940,7 @@ def compare_models(ann_metrics, snn_metrics, ann_train_energy=None, snn_train_en
     snn_map = snn_metrics.get('map', 0.0)
     ann_cls_acc = ann_metrics.get('classification_accuracy', 0.0)
     snn_cls_acc = snn_metrics.get('classification_accuracy', 0.0)
-    
-    # =========================================================================
-    # CREATE 2x3 COMPREHENSIVE PLOT
-    # =========================================================================
+
     fig, axes = plt.subplots(2, 3, figsize=(18, 12))
     
     models = ['YOLOv8\n(from scratch)', f'SNN\n(T={CONFIG.TIMESTEPS})']
@@ -2196,7 +2052,7 @@ def compare_models(ann_metrics, snn_metrics, ann_train_energy=None, snn_train_en
     
     plot_path = os.path.join(save_path, 'comprehensive_comparison_real_energy.png')
     plt.savefig(plot_path, dpi=150, bbox_inches='tight')
-    print(f"\n✅ Comprehensive plot saved: {plot_path}")
+    print(f"\n Comprehensive plot saved: {plot_path}")
     plt.show()
     
     # Print summary
@@ -2227,22 +2083,17 @@ def compare_models(ann_metrics, snn_metrics, ann_train_energy=None, snn_train_en
         'snn_inference_energy_j': snn_metrics['energy_per_image_j']
     }
 
-# ============================================================================
-# MAIN COMPLETE PIPELINE
-# ============================================================================
 
 def run_complete_pipeline(voc_path, batch_size=4, epochs=50, eval_batches=None, 
                          train_from_scratch=True, device=None, output_dir='./results'):
-    """
-    🔥 MODIFIED: SNN trains FIRST, then YOLOv8 (better memory management)
-    """
+   
     
     if device is None:
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
     
     print("\n" + "="*80)
-    print("🚀 COMPLETE SNN-YOLOV8 ENERGY COMPARISON PROJECT")
-    print("   ⚡ SNN TRAINS FIRST (MEMORY OPTIMIZED)")
+    print(" COMPLETE SNN-YOLOV8 ENERGY COMPARISON PROJECT")
+    print("    SNN TRAINS FIRST (MEMORY OPTIMIZED)")
     print("="*80)
     print(f"\nConfiguration:")
     print(f"  VOC2007 Path: {voc_path}")
@@ -2256,7 +2107,7 @@ def run_complete_pipeline(voc_path, batch_size=4, epochs=50, eval_batches=None,
     print(f"  Device: {device.upper()}")
     print(f"  Output Dir: {output_dir}")
     if device == 'cpu':
-        print(f"  ⚠️  CPU mode - Training will be slower")
+        print(f"    CPU mode - Training will be slower")
     print("="*80)
     
     os.makedirs(output_dir, exist_ok=True)
@@ -2264,7 +2115,7 @@ def run_complete_pipeline(voc_path, batch_size=4, epochs=50, eval_batches=None,
     # Setup VOC2007
     success, voc_root = setup_voc2007_local(voc_path)
     if not success:
-        print("❌ VOC2007 setup failed!")
+        print(" VOC2007 setup failed!")
         return None
     
     # STEP 1: Convert dataset
@@ -2276,7 +2127,7 @@ def run_complete_pipeline(voc_path, batch_size=4, epochs=50, eval_batches=None,
     )
     
     if yolo_dir is None:
-        print("❌ Dataset conversion failed!")
+        print(" Dataset conversion failed!")
         return None
     
     # STEP 2: Create dataloaders
@@ -2286,9 +2137,7 @@ def run_complete_pipeline(voc_path, batch_size=4, epochs=50, eval_batches=None,
         imgsz=CONFIG.IMGSZ
     )
     
-    # =========================================================================
-    # 🔥 STEP 3: BUILD SNN FIRST (train before YOLOv8 to free memory after)
-    # =========================================================================
+
     print("\n" + "="*80)
     print("STEP 3: BUILDING SNN-YOLOV8 MODEL")
     print("="*80)
@@ -2301,12 +2150,10 @@ def run_complete_pipeline(voc_path, batch_size=4, epochs=50, eval_batches=None,
     print(f"  Classes: {len(CONFIG.VOC_CLASSES)}")
     print("="*80)
     
-    # =========================================================================
-    # 🔥 STEP 4: TRAIN SNN (FIRST!)
-    # =========================================================================
-    print("\n" + "🔥"*40)
+ 
+    print("\n" + ""*40)
     print("STEP 4: TRAINING SNN FROM SCRATCH (FIRST!)")
-    print("🔥"*40)
+    print(""*40)
     
     snn_model, train_losses, firing_rates, snn_train_energy = train_snn_model(
         snn_model,
@@ -2324,13 +2171,11 @@ def run_complete_pipeline(voc_path, batch_size=4, epochs=50, eval_batches=None,
     print(f"✓ SNN model saved to {model_path}")
     
     # 📊 Generate SNN training plots
-    print("\n📊 Generating SNN training plots...")
+    print("\n Generating SNN training plots...")
     plot_snn_training_metrics(train_losses, firing_rates, epochs, save_path=output_dir)
     plot_combined_training_comparison(train_losses, firing_rates, epochs, save_path=output_dir)
     
-    # =========================================================================
-    # 🔥 STEP 5: EVALUATE SNN
-    # =========================================================================
+
     snn_metrics, snn_preds, snn_targets = evaluate_snn(
         snn_model,
         val_loader,
@@ -2339,22 +2184,19 @@ def run_complete_pipeline(voc_path, batch_size=4, epochs=50, eval_batches=None,
         max_batches=eval_batches
     )
     
-    # 🔥 FREE SNN FROM MEMORY (critical for 16GB GPU!)
-    print("\n🧹 Clearing SNN from GPU memory...")
+  
+    print("\n Clearing SNN from GPU memory...")
     del snn_model
     if device == 'cuda':
         torch.cuda.empty_cache()
         print(f"✓ GPU memory freed")
     
-    # =========================================================================
-    # 🔥 STEP 6: NOW TRAIN YOLOV8 (SNN is already done and freed)
-    # =========================================================================
     yolo_train_energy = None
     
     if train_from_scratch:
-        print("\n" + "🔥"*40)
+        print("\n" + ""*40)
         print("STEP 6: TRAINING YOLOV8 FROM SCRATCH")
-        print("🔥"*40)
+        print(""*40)
         
         yolo_model, yolo_train_energy, yolo_results = train_yolov8_from_scratch(
             yolo_dir, 
@@ -2370,17 +2212,15 @@ def run_complete_pipeline(voc_path, batch_size=4, epochs=50, eval_batches=None,
         print(f"✓ YOLOv8 model saved to {yolo_save_path}")
         
         # Generate YOLOv8 training plots
-        print("\n📊 Generating YOLOv8 training plots...")
+        print("\n Generating YOLOv8 training plots...")
         plot_yolov8_training_metrics(yolo_results, save_path=output_dir)
     else:
         # Load pretrained YOLOv8
-        print("\n📦 Loading pretrained YOLOv8...")
+        print("\n Loading pretrained YOLOv8...")
         from ultralytics import YOLO
         yolo_model = YOLO('yolov8n.pt')
     
-    # =========================================================================
-    # 🔥 STEP 7: EVALUATE YOLOV8
-    # =========================================================================
+
     ann_metrics, ann_preds, ann_targets = evaluate_real_yolov8(
         yolo_model,
         val_loader,
@@ -2388,9 +2228,7 @@ def run_complete_pipeline(voc_path, batch_size=4, epochs=50, eval_batches=None,
         max_batches=eval_batches
     )
     
-    # =========================================================================
-    # 🔥 STEP 8: COMPARE MODELS
-    # =========================================================================
+
     comparison = compare_models(
         ann_metrics, 
         snn_metrics, 
@@ -2399,9 +2237,6 @@ def run_complete_pipeline(voc_path, batch_size=4, epochs=50, eval_batches=None,
         save_path=output_dir
     )
     
-    # =========================================================================
-    # FINAL SUMMARY
-    # =========================================================================
     print("\n" + "="*80)
     print("✅ COMPLETE PIPELINE FINISHED!")
     print("="*80)
@@ -2458,20 +2293,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description='SNN-YOLOv8 Energy Comparison - Train Both from Scratch',
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  # Full training comparison (both from scratch) - RECOMMENDED FOR YOUR PROJECT
-  python snn_yolo_local.py --voc_path "E:\\Neuro_AI_Project\\Data\\VOCdevkit\\VOC2007" --epochs 50 --batch_size 16 --train_from_scratch
-  
-  # Quick test (evaluation only, YOLOv8 pretrained)
-  python snn_yolo_local.py --voc_path "E:\\Neuro_AI_Project\\Data\\VOCdevkit\\VOC2007" --quick
-  
-  # Shorter training for testing
-  python snn_yolo_local.py --voc_path "E:\\Neuro_AI_Project\\Data\\VOCdevkit\\VOC2007" --epochs 1 --train_from_scratch
-  
-  # CPU mode (not recommended for full training)
-  python snn_yolo_local.py --voc_path "E:\\Neuro_AI_Project\\Data\\VOCdevkit\\VOC2007" --device cpu --batch_size 4
-        """
+    
+
     )
     
     parser.add_argument('--voc_path', type=str, required=True,
@@ -2516,12 +2339,12 @@ Examples:
     
     # Validate configuration
     if args.train_from_scratch and args.quick:
-        print("\n⚠️  Warning: --quick mode uses pretrained YOLOv8, ignoring --train_from_scratch")
+        print("\n  Warning: --quick mode uses pretrained YOLOv8, ignoring --train_from_scratch")
         args.train_from_scratch = False
     
     # Run pipeline
     if args.quick:
-        print("\n🚀 Running Quick Test Mode (Pretrained YOLOv8)...")
+        print("\n Running Quick Test Mode (Pretrained YOLOv8)...")
         results = run_complete_pipeline(
             voc_path=args.voc_path,
             batch_size=8,
@@ -2549,9 +2372,9 @@ Examples:
     
     if results:
         print("\n" + "="*80)
-        print("✅ EXECUTION COMPLETE!")
+        print(" EXECUTION COMPLETE!")
         print("="*80)
-        print(f"\n📁 Check {args.output_dir}/ folder for:")
+        print(f"\n Check {args.output_dir}/ folder for:")
         print(f"  ✓ comprehensive_comparison_real_energy.png - Comparison plots")
         
         if args.train_from_scratch or not args.quick:
@@ -2569,5 +2392,6 @@ Examples:
         
         print("\n" + "="*80)
     else:
-        print("\n❌ Execution failed!")
+        print("\n Execution failed!")
+
         exit(1)
